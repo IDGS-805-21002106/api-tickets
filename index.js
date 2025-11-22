@@ -29,7 +29,7 @@ const dbConfig = {
   requestTimeout: 30000,
 };
 
-// IA para clasificar prioridad
+// Función de IA para clasificar prioridad
 async function clasificarPrioridadIA(descripcion) {
   const RECHAZO_NO_TECNICO = "Entrada inválida";
 
@@ -211,6 +211,5 @@ app.get("/movil/test-db", async (req, res) => {
   }
 });
 
-// Iniciar servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+
+export default app;
