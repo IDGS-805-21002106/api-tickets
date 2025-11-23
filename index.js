@@ -13,7 +13,33 @@ const iaClient = new OpenAI({
 });
 
 const app = express();
-app.use(cors());
+
+// Configurar CORS correctamente
+const allowedOrigins = [
+  "http://localhost:8100", // Ionic local
+  "https://api-tickets-git-main-jorges-projects-c868c309.vercel.app" // tu dominio Vercel
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Permitir llamadas sin 'origin' (como las de Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("CORS no permitido para este dominio: " + origin));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
+// Manejar preflight OPTIONS
+app.options("*", cors());
+
 app.use(express.json());
 
 const dbConfig = {
@@ -29,7 +55,7 @@ const dbConfig = {
   requestTimeout: 30000,
 };
 
-// Función de IA para clasificar prioridad
+//  Función de IA para clasificar prioridad
 async function clasificarPrioridadIA(descripcion) {
   const RECHAZO_NO_TECNICO = "Entrada inválida";
 
@@ -72,12 +98,12 @@ Si la entrada NO es técnica, responde exactamente con: ${RECHAZO_NO_TECNICO}.`,
   }
 }
 
-// Endpoint raíz
+//  Endpoint raíz
 app.get("/", (req, res) => {
   res.send("API móvil de Tickets corriendo correctamente");
 });
 
-// Login
+//  Login
 app.post("/movil/login", async (req, res) => {
   const { usuario, contrasena } = req.body;
 
@@ -193,7 +219,6 @@ app.post("/movil/tickets", async (req, res) => {
   }
 });
 
-// Test DB
 app.get("/movil/test-db", async (req, res) => {
   try {
     const pool = await sql.connect(dbConfig);
@@ -210,6 +235,5 @@ app.get("/movil/test-db", async (req, res) => {
     });
   }
 });
-
 
 export default app;
