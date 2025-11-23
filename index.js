@@ -14,31 +14,25 @@ const iaClient = new OpenAI({
 
 const app = express();
 
-// Configurar CORS correctamente
 const allowedOrigins = [
-  "http://localhost:8100", // Ionic local
-  "https://api-tickets-git-main-jorges-projects-c868c309.vercel.app" // tu dominio Vercel
+  "http://localhost:8100",
+  "https://api-tickets-git-main-jorges-projects-c868c309.vercel.app"
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Permitir llamadas sin 'origin' (como las de Postman)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        return callback(new Error("CORS no permitido para este dominio: " + origin));
-      }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("CORS no permitido: " + origin));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
 
-// Manejar preflight OPTIONS
-app.options("*", cors());
+// app.options("*", cors());
+
+app.options(/.*/, cors());
 
 app.use(express.json());
 
