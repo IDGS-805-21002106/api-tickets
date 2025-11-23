@@ -14,17 +14,31 @@ const iaClient = new OpenAI({
 
 const app = express();
 
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "http://localhost:8100"); // tu app Ionic local
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.header("Access-Control-Allow-Credentials", "true");
+// Configurar CORS correctamente para Vercel + Ionic
+const allowedOrigins = [
+  "http://localhost:8100", // app Ionic local
+  "https://api-tickets-git-main-jorges-projects-c868c309.vercel.app" // dominio de la API en Vercel
+];
 
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Permite solicitudes sin origin (como curl o Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.warn("Bloqueado por CORS:", origin);
+      return callback(new Error("CORS no permitido"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  })
+);
+
+// Middleware para manejar preflight explícitamente
+app.options("*", cors());
 
 app.use(express.json());
 
