@@ -14,25 +14,17 @@ const iaClient = new OpenAI({
 
 const app = express();
 
-const allowedOrigins = [
-  "http://localhost:8100",
-  "https://api-tickets-git-main-jorges-projects-c868c309.vercel.app"
-];
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "http://localhost:8100"); // tu app Ionic local
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("CORS no permitido: " + origin));
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
-}));
-
-// app.options("*", cors());
-
-app.options(/.*/, cors());
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 app.use(express.json());
 
