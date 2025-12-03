@@ -5,28 +5,25 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import OpenAI from "openai";
 
-
-
 dotenv.config();
 
-// --- Configurar el cliente de IA ---
+// --- Configurar cliente IA (OpenRouter) ---
 const iaClient = new OpenAI({
     apiKey: process.env.DEEPSEEK_API_KEY,
     baseURL: process.env.DEEPSEEK_BASE_URL,
     defaultHeaders: {
-        "HTTP-Referer": "https://api-tickets-production-1357.up.railway.app", // tu dominio
-        "X-Title": "Sistema de Tickets", // nombre que aparecerá en OpenRouter
+        "HTTP-Referer": "https://api-tickets-production-1357.up.railway.app", // dominio de tu backend
+        "X-Title": "Sistema de Tickets", // nombre de tu app
     },
 });
 
+// --- Express ---
 const app = express();
 
 // --- CORS ---
 const allowedOrigins = [
     "http://localhost:8100", // Ionic local
-    // Agrega aquí el dominio del frontend si está desplegado
 ];
-
 app.use(
     cors({
         origin: function (origin, callback) {
@@ -41,10 +38,9 @@ app.use(
         credentials: true,
     })
 );
-
 app.use(express.json());
 
-// --- Configuración de la base de datos ---
+// --- Configuración DB ---
 const dbConfig = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -61,14 +57,17 @@ const dbConfig = {
 // --- Clasificación IA ---
 async function clasificarPrioridadIA(descripcion) {
     const RECHAZO_NO_TECNICO = "Entrada inválida";
+
     try {
+        // Llamada al modelo gratuito de OpenRouter
         const completion = await iaClient.chat.completions.create({
-            model: "tngtech/deepseek-r1t2-chimera:free",
+            model: "openai/gpt-oss-20b:free",
             messages: [
                 {
                     role: "system",
-                    content: `Clasifica la prioridad de una incidencia técnica.
-Responde solo con: Alta, Media o Baja. Si no es técnico, responde "${RECHAZO_NO_TECNICO}".`,
+                    content: `Eres un asistente que clasifica incidencias técnicas.
+Responde con una sola palabra: Alta, Media o Baja. 
+Si el texto no describe un problema técnico, responde "${RECHAZO_NO_TECNICO}".`,
                 },
                 {
                     role: "user",
@@ -77,6 +76,7 @@ Responde solo con: Alta, Media o Baja. Si no es técnico, responde "${RECHAZO_NO
             ],
             temperature: 0,
             max_tokens: 10,
+            extra_body: { reasoning: { enabled: true } }, // modo reasoning opcional
         });
 
         const respuesta = completion.choices[0].message.content.trim().toLowerCase();
@@ -84,12 +84,14 @@ Responde solo con: Alta, Media o Baja. Si no es técnico, responde "${RECHAZO_NO
         if (respuesta.includes("alta")) return "Alta";
         if (respuesta.includes("media")) return "Media";
         if (respuesta.includes("baja")) return "Baja";
+
         return "Baja";
     } catch (err) {
         console.error("Error al clasificar con IA:", err.response?.data || err.message);
         return "Baja";
     }
 }
+
 
 // --- Endpoint raíz ---
 app.get("/", (req, res) => {
