@@ -384,6 +384,32 @@ app.post("/movil/evaluaciones", async (req, res) => {
 
 
 
+// --- Verificar si un ticket ya fue evaluado por el usuario ---
+app.get("/movil/evaluaciones/verificar/:idTicket/:idUsuario", async (req, res) => {
+    const { idTicket, idUsuario } = req.params;
+    try {
+        const pool = await sql.connect(dbConfig);
+        const result = await pool
+            .request()
+            .input("idTicket", sql.Int, idTicket)
+            .input("idUsuario", sql.Int, idUsuario)
+            .query(`
+                SELECT COUNT(*) AS total
+                FROM tbl_evaluaciones
+                WHERE id_ticket = @idTicket AND id_usuario = @idUsuario AND rol_evaluador = 'Usuario'
+            `);
+
+        const evaluado = result.recordset[0].total > 0;
+        res.json({ evaluado });
+    } catch (err) {
+        console.error("Error al verificar evaluación:", err);
+        res.status(500).json({ evaluado: false });
+    }
+});
+
+
+
+
 
 
 
