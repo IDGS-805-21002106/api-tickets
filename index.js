@@ -57,7 +57,7 @@ async function clasificarPrioridadIA(descripcion) {
     const RECHAZO_NO_TECNICO = "Entrada inválida";
     try {
         const completion = await iaClient.chat.completions.create({
-            model: "deepseek/deepseek-chat-v3.1:free",
+            model: "tngtech/deepseek-r1t2-chimera:free",
             messages: [
                 {
                     role: "system",
