@@ -9,10 +9,10 @@ dotenv.config();
 
 // --- Configurar cliente IA (OpenRouter) ---
 const iaClient = new OpenAI({
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    baseURL: process.env.DEEPSEEK_BASE_URL,
+    apiKey: process.env.OPENROUTER_API_KEY,
+    baseURL: "https://openrouter.ai/api/v1",
     defaultHeaders: {
-        "HTTP-Referer": "https://api-tickets-production-1357.up.railway.app", // dominio de tu backend
+        "HTTP-Referer": "https://api-tickets-production-1357.up.railway.app", // dominio del backend
         "X-Title": "Sistema de Tickets", // nombre de tu app
     },
 });
@@ -59,15 +59,13 @@ async function clasificarPrioridadIA(descripcion) {
     const RECHAZO_NO_TECNICO = "Entrada inválida";
 
     try {
-        // Llamada al modelo gratuito de OpenRouter
         const completion = await iaClient.chat.completions.create({
-            model: "openai/gpt-oss-20b:free",
+            model: "mistralai/mistral-7b-instruct:free",
             messages: [
                 {
                     role: "system",
-                    content: `Eres un asistente que clasifica incidencias técnicas.
-Responde con una sola palabra: Alta, Media o Baja. 
-Si el texto no describe un problema técnico, responde "${RECHAZO_NO_TECNICO}".`,
+                    content: `Clasifica la prioridad de una incidencia técnica.
+Responde solo con: Alta, Media o Baja. Si no es técnico, responde "${RECHAZO_NO_TECNICO}".`,
                 },
                 {
                     role: "user",
@@ -75,8 +73,7 @@ Si el texto no describe un problema técnico, responde "${RECHAZO_NO_TECNICO}".`
                 },
             ],
             temperature: 0,
-            max_tokens: 10,
-            extra_body: { reasoning: { enabled: true } }, // modo reasoning opcional
+            max_tokens: 20,
         });
 
         const respuesta = completion.choices[0].message.content.trim().toLowerCase();
@@ -91,7 +88,6 @@ Si el texto no describe un problema técnico, responde "${RECHAZO_NO_TECNICO}".`
         return "Baja";
     }
 }
-
 
 // --- Endpoint raíz ---
 app.get("/", (req, res) => {
