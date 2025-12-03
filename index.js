@@ -333,6 +333,63 @@ app.get("/movil/test-db", async (req, res) => {
     }
 });
 
+
+
+
+
+// --- Registrar evaluación de un ticket cerrado ---
+app.post("/movil/evaluaciones", async (req, res) => {
+    const { id_ticket, id_usuario, calificacion, comentario } = req.body;
+
+    if (!id_ticket || !id_usuario || !calificacion) {
+        return res.status(400).json({ error: "Faltan campos obligatorios" });
+    }
+
+    try {
+        const pool = await sql.connect(dbConfig);
+
+        // Verificar que el ticket pertenece al usuario y esté cerrado
+        const ticket = await pool.request()
+            .input("id_ticket", sql.Int, id_ticket)
+            .input("id_usuario", sql.Int, id_usuario)
+            .query(`
+                SELECT estado FROM tbl_tickets
+                WHERE id_ticket = @id_ticket AND id_usuario = @id_usuario
+            `);
+
+        if (ticket.recordset.length === 0)
+            return res.status(404).json({ error: "Ticket no encontrado o no pertenece al usuario" });
+
+        if (ticket.recordset[0].estado !== "Cerrado")
+            return res.status(400).json({ error: "Solo se pueden evaluar tickets cerrados" });
+
+        // Insertar evaluación
+        await pool.request()
+            .input("id_ticket", sql.Int, id_ticket)
+            .input("id_usuario", sql.Int, id_usuario)
+            .input("rol_evaluador", sql.VarChar, "Usuario")
+            .input("calificacion", sql.Int, calificacion)
+            .input("comentario", sql.VarChar, comentario || null)
+            .query(`
+                INSERT INTO tbl_evaluaciones (id_ticket, id_usuario, rol_evaluador, calificacion, comentario)
+                VALUES (@id_ticket, @id_usuario, @rol_evaluador, @calificacion, @comentario)
+            `);
+
+        res.json({ mensaje: "Evaluación registrada correctamente" });
+    } catch (err) {
+        console.error("Error al registrar evaluación:", err);
+        res.status(500).json({ error: "Error al registrar la evaluación" });
+    }
+});
+
+
+
+
+
+
+
+
+
 // --- Servidor ---
 const PORT = process.env.PORT || 3000;
 
