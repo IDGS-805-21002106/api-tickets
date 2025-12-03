@@ -15,29 +15,18 @@ const iaClient = new OpenAI({
 
 const app = express();
 
-// --- CORS configurado para Ionic y Azure ---
-// La URL de Azure App Service es el dominio de la aplicación. 
-// Para CORS, se necesita la URL de *donde proviene la petición* (tu app cliente), no el dominio de la API.
-// Asumiendo que "api-tickets-daym.azurewebsites.net" es la URL de tu *API*, la remuevo de allowedOrigins 
-// y dejo solo el frontend de Ionic si fuese necesario, o ajusta esta lista a tus clientes.
+// --- CORS ---
 const allowedOrigins = [
     "http://localhost:8100", // Ionic local
-    // Añade el dominio de tu aplicación Ionic/móvil si está desplegada en otro lugar.
+    // Agrega aquí el dominio del frontend si está desplegado
 ];
 
 app.use(
     cors({
         origin: function (origin, callback) {
-            // Permitir peticiones sin origen (como clientes REST o llamadas internas)
             if (!origin) return callback(null, true);
-            
-            // Permitir el origen si está en la lista blanca
             if (allowedOrigins.includes(origin)) return callback(null, true);
-
-            // **IMPORTANTE para Azure:** Permitir el dominio de Azure App Service y el subdominio si se usa.
-            // Esto permite que el backend pueda ser accedido directamente por otras APIs o servicios en Azure.
-            if (origin.endsWith('.azurewebsites.net')) return callback(null, true);
-
+            if (origin.endsWith(".azurewebsites.net")) return callback(null, true);
             console.warn("CORS bloqueado para origen:", origin);
             return callback(new Error("CORS no permitido"));
         },
@@ -57,28 +46,23 @@ const dbConfig = {
     database: process.env.DB_DATABASE,
     options: {
         encrypt: true,
-        // En Azure, a menudo es preferible usar 'true' para la conexión a SQL Server en Azure.
-        // Si tu DB no es Azure SQL, 'false' podría ser correcto, pero si lo es, cámbialo a 'true' y asegúrate de que 'encrypt' también sea 'true'.
-        trustServerCertificate: false, 
+        trustServerCertificate: false,
     },
     connectionTimeout: 30000,
     requestTimeout: 30000,
 };
 
-// --- Función de IA para clasificar prioridad ---
+// --- Clasificación IA ---
 async function clasificarPrioridadIA(descripcion) {
     const RECHAZO_NO_TECNICO = "Entrada inválida";
-
     try {
         const completion = await iaClient.chat.completions.create({
             model: "deepseek/deepseek-chat-v3.1:free",
             messages: [
                 {
                     role: "system",
-                    content: `Tu única función es clasificar la prioridad de una incidencia técnica. 
-Si la entrada del usuario es un problema técnico (relacionado con software, hardware, redes o infraestructura), 
-responde SOLAMENTE con una de estas tres palabras: Baja, Media o Alta. 
-Si la entrada NO es técnica, responde exactamente con: ${RECHAZO_NO_TECNICO}.`,
+                    content: `Clasifica la prioridad de una incidencia técnica.
+Responde solo con: Alta, Media o Baja. Si no es técnico, responde "${RECHAZO_NO_TECNICO}".`,
                 },
                 {
                     role: "user",
@@ -91,17 +75,12 @@ Si la entrada NO es técnica, responde exactamente con: ${RECHAZO_NO_TECNICO}.`,
 
         let respuesta = completion.choices[0].message.content
             .trim()
-            .replace(/[<>\[\]{}|\\/_.,;:!¡¿?'"`*~^%$#@-]/g, "")
-            .replace(/\s+/g, "")
             .toLowerCase();
 
-        if (respuesta.includes("alta")) respuesta = "Alta";
-        else if (respuesta.includes("media")) respuesta = "Media";
-        else if (respuesta.includes("baja")) respuesta = "Baja";
-        else if (respuesta.includes(RECHAZO_NO_TECNICO.toLowerCase())) respuesta = "Baja";
-        else respuesta = "Baja";
-
-        return respuesta;
+        if (respuesta.includes("alta")) return "Alta";
+        if (respuesta.includes("media")) return "Media";
+        if (respuesta.includes("baja")) return "Baja";
+        return "Baja";
     } catch (err) {
         console.error("Error al clasificar con IA:", err.message);
         return "Baja";
@@ -129,9 +108,7 @@ app.post("/movil/login", async (req, res) => {
             .query("SELECT * FROM tbl_usuarios WHERE usuario = @usuario AND activo = 1");
 
         const user = result.recordset[0];
-        if (!user) {
-            return res.status(404).json({ error: "Usuario no encontrado o inactivo" });
-        }
+        if (!user) return res.status(404).json({ error: "Usuario no encontrado o inactivo" });
 
         let passwordValido = false;
         if (user.password.startsWith("$2b$") || user.password.startsWith("$2a$")) {
@@ -140,9 +117,7 @@ app.post("/movil/login", async (req, res) => {
             passwordValido = contrasena === user.password;
         }
 
-        if (!passwordValido) {
-            return res.status(401).json({ error: "Contraseña incorrecta" });
-        }
+        if (!passwordValido) return res.status(401).json({ error: "Contraseña incorrecta" });
 
         res.json({
             mensaje: "Login exitoso",
@@ -191,6 +166,42 @@ app.get("/movil/tickets/usuario/:idUsuario", async (req, res) => {
     }
 });
 
+//tickets de tecnico
+
+app.get("/movil/tickets/tecnico/:idTecnico", async (req, res) => {
+    const { idTecnico } = req.params;
+
+    try {
+        const pool = await sql.connect(dbConfig);
+        const result = await pool
+            .request()
+            .input("idTecnico", sql.Int, idTecnico)
+            .query(`
+                SELECT 
+                    t.id_ticket AS id,
+                    t.titulo,
+                    t.descripcion_problema AS descripcion,
+                    t.estado,
+                    t.prioridad,
+                    t.fecha_creacion,
+                    u.id_usuario AS id_usuario,
+                    u.nombre AS nombre_usuario,
+                    u.apellido AS apellido_usuario,
+                    a.nombre_area AS area_usuario
+                FROM tbl_tickets t
+                INNER JOIN tbl_usuarios u ON t.id_usuario = u.id_usuario
+                LEFT JOIN tbl_areas a ON u.id_area = a.id_area
+                WHERE t.id_tecnico = @idTecnico
+                ORDER BY t.fecha_creacion DESC
+            `);
+
+        res.json(result.recordset);
+    } catch (err) {
+        console.error("Error al obtener tickets del técnico:", err);
+        res.status(500).json({ error: "Error al obtener tickets del técnico" });
+    }
+});
+
 // --- Crear ticket ---
 app.post("/movil/tickets", async (req, res) => {
     const { id_usuario, id_area, titulo, descripcion_problema } = req.body;
@@ -201,8 +212,6 @@ app.post("/movil/tickets", async (req, res) => {
 
     try {
         let prioridadIA = await clasificarPrioridadIA(descripcion_problema);
-        console.log(`Prioridad sugerida por IA: ${prioridadIA}`);
-
         const prioridadesValidas = ["Alta", "Media", "Baja"];
         if (!prioridadesValidas.includes(prioridadIA)) prioridadIA = "Baja";
 
@@ -229,6 +238,83 @@ app.post("/movil/tickets", async (req, res) => {
     }
 });
 
+// --- Cambiar estado del ticket (solo técnicos) ---
+app.put("/movil/tickets/:idTicket/estado", async (req, res) => {
+    const { idTicket } = req.params;
+    const { nuevoEstado } = req.body;
+
+    const estadosValidos = ["En proceso", "Cerrado", "Cancelado"];
+    if (!estadosValidos.includes(nuevoEstado)) {
+        return res.status(400).json({ error: "Estado inválido" });
+    }
+
+    try {
+        const pool = await sql.connect(dbConfig);
+        const result = await pool
+            .request()
+            .input("idTicket", sql.Int, idTicket)
+            .input("estado", sql.VarChar, nuevoEstado)
+            .query(`
+                UPDATE tbl_tickets
+                SET estado = @estado,
+                    fecha_cierre = CASE WHEN @estado = 'Cerrado' THEN GETDATE() ELSE NULL END
+                WHERE id_ticket = @idTicket
+            `);
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ error: "Ticket no encontrado" });
+        }
+
+        res.json({ mensaje: `Ticket actualizado a estado: ${nuevoEstado}` });
+    } catch (err) {
+        console.error("Error al actualizar estado del ticket:", err);
+        res.status(500).json({ error: "Error al actualizar el estado del ticket" });
+    }
+});
+
+// --- Actualizar username y contraseña ---
+app.put("/movil/usuario/:idUsuario", async (req, res) => {
+    const { idUsuario } = req.params;
+    const { nuevoUsuario, nuevaContrasena } = req.body;
+
+    if (!nuevoUsuario && !nuevaContrasena) {
+        return res.status(400).json({ error: "Debe enviar al menos un campo para actualizar" });
+    }
+
+    try {
+        const pool = await sql.connect(dbConfig);
+
+        // Si se va a cambiar la contraseña, la encriptamos
+        let hashedPassword = null;
+        if (nuevaContrasena) {
+            const salt = await bcrypt.genSalt(10);
+            hashedPassword = await bcrypt.hash(nuevaContrasena, salt);
+        }
+
+        // Construir dinámicamente la consulta
+        let query = "UPDATE tbl_usuarios SET ";
+        if (nuevoUsuario) query += "usuario = @nuevoUsuario";
+        if (nuevaContrasena) query += (nuevoUsuario ? ", " : "") + "password = @nuevaContrasena";
+        query += " WHERE id_usuario = @idUsuario";
+
+        const result = await pool
+            .request()
+            .input("idUsuario", sql.Int, idUsuario)
+            .input("nuevoUsuario", sql.VarChar, nuevoUsuario || null)
+            .input("nuevaContrasena", sql.VarChar, hashedPassword || null)
+            .query(query);
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado" });
+        }
+
+        res.json({ mensaje: "Usuario actualizado correctamente" });
+    } catch (err) {
+        console.error("Error al actualizar usuario:", err);
+        res.status(500).json({ error: "Error al actualizar los datos del usuario" });
+    }
+});
+
 // --- Test conexión DB ---
 app.get("/movil/test-db", async (req, res) => {
     try {
@@ -247,12 +333,9 @@ app.get("/movil/test-db", async (req, res) => {
     }
 });
 
-// **MODIFICACIÓN CLAVE PARA AZURE APP SERVICES**
-// Azure inyecta el puerto en la variable de entorno PORT.
+// --- Servidor ---
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
-    // Opcional: Para logs de Azure (se envía a stdout, lo que Azure registra)
-    console.log(`Node.js Express server listening on port ${PORT}`);
 });
