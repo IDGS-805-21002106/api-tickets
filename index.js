@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import OpenAI from "openai";
 
+import fetch from "node-fetch";
+
 dotenv.config();
 
 // --- Configurar el cliente de IA ---
@@ -56,26 +58,40 @@ const dbConfig = {
 async function clasificarPrioridadIA(descripcion) {
     const RECHAZO_NO_TECNICO = "Entrada inválida";
     try {
-        const completion = await iaClient.chat.completions.create({
-            model: "tngtech/deepseek-r1t2-chimera:free",
-            messages: [
-                {
-                    role: "system",
-                    content: `Clasifica la prioridad de una incidencia técnica.
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://api-tickets-production-1357.up.railway.app", // tu dominio, obligatorio para OpenRouter
+                "X-Title": "Sistema de Tickets", // nombre que quieras que aparezca en tu cuenta de OpenRouter
+            },
+            body: JSON.stringify({
+                model: "tngtech/deepseek-r1t2-chimera:free",
+                messages: [
+                    {
+                        role: "system",
+                        content: `Clasifica la prioridad de una incidencia técnica.
 Responde solo con: Alta, Media o Baja. Si no es técnico, responde "${RECHAZO_NO_TECNICO}".`,
-                },
-                {
-                    role: "user",
-                    content: `Problema: ${descripcion}`,
-                },
-            ],
-            temperature: 0.0,
-            max_tokens: 10,
+                    },
+                    {
+                        role: "user",
+                        content: `Problema: ${descripcion}`,
+                    },
+                ],
+                temperature: 0.0,
+                max_tokens: 10,
+            }),
         });
 
-        let respuesta = completion.choices[0].message.content
-            .trim()
-            .toLowerCase();
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Error al clasificar con IA:", errorText);
+            return "Baja";
+        }
+
+        const data = await response.json();
+        const respuesta = data.choices[0].message.content.trim().toLowerCase();
 
         if (respuesta.includes("alta")) return "Alta";
         if (respuesta.includes("media")) return "Media";
